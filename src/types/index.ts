@@ -12,6 +12,7 @@ export interface Transaction {
   isManual: boolean
   sessionId: string
   ignored: boolean      // if true, excluded from Summary
+  categoryPinned?: boolean  // if true, category was manually set and survives re-apply
 }
 
 export interface UploadSession {

@@ -4,15 +4,17 @@ import type { Transaction, Category, Rule, AppData, UploadSession } from '../typ
 import { classifyTransaction } from '../utils/ruleEngine'
 
 const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'market',        name: 'Market',        keywords: ['albert heijn', 'jumbo', 'lidl', 'aldi', 'plus supermarkt', 'hoogvliet', 'dirk', 'ah '],  color: '#22c55e' },
-  { id: 'rent',          name: 'Rent',           keywords: ['huur', 'rent', 'hypotheek'],                                                             color: '#3b82f6' },
-  { id: 'transport',     name: 'Transport',      keywords: ['ns ', 'ov-chipkaart', 'parkeer', 'shell', 'bp ', 'esso', 'tankstation', 'uber'],         color: '#f59e0b' },
-  { id: 'dining',        name: 'Dining Out',     keywords: ['restaurant', 'cafe ', 'mcdonalds', 'burger king', 'kfc', 'thuisbezorgd', 'deliveroo'],   color: '#ef4444' },
-  { id: 'subscriptions', name: 'Subscriptions',  keywords: ['netflix', 'spotify', 'apple', 'google', 'amazon', 'disney'],                            color: '#8b5cf6' },
-  { id: 'health',        name: 'Health',         keywords: ['apotheek', 'huisarts', 'tandarts', 'zorgverzekering', 'hospital'],                      color: '#06b6d4' },
-  { id: 'salary',        name: 'Salary',         keywords: ['salaris', 'loon', 'salary'],                                                            color: '#10b981' },
-  { id: 'transfer',      name: 'Transfer',       keywords: [],                                                                                       color: '#6b7280' },
-  { id: 'other',         name: 'Other',          keywords: [],                                                                                       color: '#94a3b8' },
+  { id: 'market',    name: 'Market',    keywords: ['albert heijn', 'jumbo', 'lidl', 'aldi', 'plus supermarkt', 'hoogvliet', 'dirk', 'ozde foodcenter'], color: '#22c55e' },
+  { id: 'rent',      name: 'Rent',      keywords: ['huur', 'rent', 'hypotheek'],                                                            color: '#3b82f6' },
+  { id: 'transport', name: 'Transport', keywords: ['ns ', 'ov-chipkaart', 'parkeer', 'shell', 'bp ', 'esso', 'tankstation', 'uber'],        color: '#f59e0b' },
+  { id: 'health',    name: 'Health',    keywords: ['apotheek', 'huisarts', 'tandarts', 'zorgverzekering', 'hospital'],                     color: '#06b6d4' },
+  { id: 'salary',    name: 'Salary',    keywords: ['salaris', 'loon', 'salary'],                                                           color: '#10b981' },
+  { id: 'transfer',  name: 'Transfer',  keywords: [],                                                                                      color: '#6b7280' },
+  {
+    id: 'bills', name: 'Bills', color: '#f97316',
+    keywords: ['youfone nederland', 'vitens nv', 'eneco services', 'basic fit nederland', 'greenchoice', 'centraal beheer', 'simpel', 'vereniging van eigenaars hofstad iv', 'allianz direct'],
+  },
+  { id: 'other',     name: 'Other',     keywords: [],                                                                                      color: '#94a3b8' },
 ]
 
 const DEFAULT_RULES: Rule[] = [
@@ -34,6 +36,7 @@ const DEFAULT_RULES: Rule[] = [
 
 interface StoreState extends AppData {
   addTransactions: (txs: Transaction[]) => { added: number; skipped: number }
+  updateTransaction: (id: string, patch: Partial<Transaction>) => void
   removeTransaction: (id: string) => void
   clearAllTransactions: () => void
   addUploadSession: (session: UploadSession) => void
@@ -91,10 +94,13 @@ export const useStore = create<StoreState>()(
           uploadSessions: s.uploadSessions.filter((sess) => sess.id !== sessionId),
         })),
 
+      updateTransaction: (id, patch) =>
+        set((s) => ({ transactions: s.transactions.map((t) => t.id === id ? { ...t, ...patch } : t) })),
+
       reapplyRules: () => {
         const { transactions, categories, rules } = get()
         const updated = transactions.map((tx) => {
-          // Reset ignored and category before re-applying, keep manual overrides flagged
+          if (tx.categoryPinned) return tx  // preserve manual category overrides
           const reset = { ...tx, ignored: false, category: 'other' }
           return classifyTransaction(reset, categories, rules)
         })
@@ -131,6 +137,24 @@ export const useStore = create<StoreState>()(
         return { transactions, uploadSessions, categories, rules, persons }
       },
     }),
-    { name: 'expense-tracker-data' }
+    {
+      name: 'expense-tracker-data',
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        const BILLS_KEYWORDS = ['youfone nederland', 'vitens nv', 'eneco services', 'basic fit nederland', 'greenchoice', 'centraal beheer', 'simpel', 'vereniging van eigenaars hofstad iv', 'allianz direct']
+        // Remove retired categories
+        state.categories = state.categories.filter((c) => c.id !== 'dining' && c.id !== 'subscriptions')
+        // Update market keywords
+        const market = state.categories.find((c) => c.id === 'market')
+        if (market) market.keywords = ['albert heijn', 'jumbo', 'lidl', 'aldi', 'plus supermarkt', 'hoogvliet', 'dirk', 'ozde foodcenter']
+        // Add bills if missing, or update its keywords
+        const bills = state.categories.find((c) => c.id === 'bills')
+        if (!bills) {
+          state.categories = [...state.categories, { id: 'bills', name: 'Bills', keywords: BILLS_KEYWORDS, color: '#f97316' }]
+        } else {
+          bills.keywords = BILLS_KEYWORDS
+        }
+      },
+    }
   )
 )

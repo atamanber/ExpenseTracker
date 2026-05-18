@@ -1,11 +1,26 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import NewRuleForm from './NewRuleForm'
 
 type SortKey = 'date' | 'amount' | 'category' | 'person' | 'bank'
 
+type ColKey = 'date' | 'amount' | 'type' | 'category' | 'description' | 'person' | 'bank' | 'actions'
+
+const COL_KEYS: ColKey[] = ['date', 'amount', 'type', 'category', 'description', 'person', 'bank', 'actions']
+
+const INIT_WIDTHS: Record<ColKey, number> = {
+  date: 110,
+  amount: 100,
+  type: 90,
+  category: 130,
+  description: 320,
+  person: 100,
+  bank: 80,
+  actions: 40,
+}
+
 export default function TransactionsPage() {
-  const { transactions, categories, removeTransaction, clearAllTransactions } = useStore()
+  const { transactions, categories, updateTransaction, removeTransaction, clearAllTransactions } = useStore()
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filterPerson, setFilterPerson] = useState('')
@@ -15,6 +30,46 @@ export default function TransactionsPage() {
   const [search, setSearch] = useState('')
   const [showIgnored, setShowIgnored] = useState(true)
   const [showNewRule, setShowNewRule] = useState(false)
+  const [colWidths, setColWidths] = useState<Record<ColKey, number>>(INIT_WIDTHS)
+
+  const resizing = useRef<{ col: ColKey; nextCol: ColKey; startX: number; startWidth: number; nextStartWidth: number } | null>(null)
+
+  const startResize = (col: ColKey, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const idx = COL_KEYS.indexOf(col)
+    const nextCol = COL_KEYS[idx + 1]
+    if (!nextCol) return
+    resizing.current = {
+      col,
+      nextCol,
+      startX: e.clientX,
+      startWidth: colWidths[col],
+      nextStartWidth: colWidths[nextCol],
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!resizing.current) return
+      const delta = e.clientX - resizing.current.startX
+      const newWidth = Math.max(50, resizing.current.startWidth + delta)
+      const actualDelta = newWidth - resizing.current.startWidth
+      const newNextWidth = Math.max(50, resizing.current.nextStartWidth - actualDelta)
+      setColWidths((prev) => ({
+        ...prev,
+        [resizing.current!.col]: newWidth,
+        [resizing.current!.nextCol]: newNextWidth,
+      }))
+    }
+
+    const onMouseUp = () => {
+      resizing.current = null
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+  }
 
   const persons = [...new Set(transactions.map((t) => t.person))]
   const months = [...new Set(transactions.map((t) => t.date.slice(0, 7)))].sort().reverse()
@@ -52,19 +107,35 @@ export default function TransactionsPage() {
     else { setSortKey(key); setSortDir('desc') }
   }
 
-  const colHeader = (key: SortKey, label: string) => (
+  const resizeHandle = (col: ColKey) => {
+    const idx = COL_KEYS.indexOf(col)
+    if (idx === COL_KEYS.length - 1) return null
+    return (
+      <div
+        onMouseDown={(e) => startResize(col, e)}
+        className="absolute right-0 top-0 h-full w-2 cursor-col-resize hover:bg-blue-500/50"
+      />
+    )
+  }
+
+  const colHeader = (col: ColKey, sortable: SortKey | null, label: string) => (
     <th
-      className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-white select-none"
-      onClick={() => handleSort(key)}
+      key={col}
+      className="relative group px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider select-none overflow-hidden"
+      style={{ width: colWidths[col] }}
+      onClick={sortable ? () => handleSort(sortable) : undefined}
     >
-      {label} {sortKey === key ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+      <span className={sortable ? 'cursor-pointer hover:text-white' : ''}>
+        {label} {sortable && sortKey === sortable ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+      </span>
+      {resizeHandle(col)}
     </th>
   )
 
   const handleCopyTable = () => {
-    const header = 'Date\tAmount\tType\tCategory\tDescription\tCounterparty\tPerson\tBank'
+    const header = 'Date\tAmount\tType\tCategory\tDescription\tPerson\tBank'
     const rows = filtered.map((t) =>
-      [t.date, t.amount.toFixed(2), t.type, categoryMap[t.category] ?? t.category, t.description, t.counterparty, t.person, t.bank].join('\t')
+      [t.date, t.amount.toFixed(2), t.type, categoryMap[t.category] ?? t.category, t.description, t.person, t.bank].join('\t')
     )
     navigator.clipboard.writeText([header, ...rows].join('\n'))
   }
@@ -134,41 +205,66 @@ export default function TransactionsPage() {
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-gray-800">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
+          <colgroup>
+            {COL_KEYS.map((col) => (
+              <col key={col} style={{ width: colWidths[col] }} />
+            ))}
+          </colgroup>
           <thead className="bg-gray-900">
             <tr>
-              {colHeader('date', 'Date')}
-              {colHeader('amount', 'Amount')}
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Type</th>
-              {colHeader('category', 'Category')}
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Description</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">Counterparty</th>
-              {colHeader('person', 'Person')}
-              {colHeader('bank', 'Bank')}
-              <th className="px-4 py-3"></th>
+              {colHeader('date', 'date', 'Date')}
+              {colHeader('amount', 'amount', 'Amount')}
+              {colHeader('type', null, 'Type')}
+              {colHeader('category', 'category', 'Category')}
+              {colHeader('description', null, 'Description')}
+              {colHeader('person', 'person', 'Person')}
+              {colHeader('bank', 'bank', 'Bank')}
+              <th className="relative py-3" style={{ width: colWidths.actions }} />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
             {filtered.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No transactions found</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No transactions found</td></tr>
             )}
             {filtered.map((tx) => (
               <tr key={tx.id} className={`transition-colors ${tx.ignored ? 'opacity-40 hover:opacity-60' : 'hover:bg-gray-800/50'}`}>
-                <td className="px-4 py-2.5 font-mono text-gray-300">{tx.date}</td>
-                <td className={`px-4 py-2.5 font-mono font-semibold ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <td className="px-4 py-2.5 font-mono text-gray-300 overflow-hidden">{tx.date}</td>
+                <td className={`px-4 py-2.5 font-mono font-semibold overflow-hidden ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   {tx.amount >= 0 ? '+' : ''}{tx.amount.toFixed(2)}
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="px-4 py-2.5 overflow-hidden">
                   {tx.ignored
                     ? <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-500">ignored</span>
                     : <span className={`text-xs px-2 py-0.5 rounded-full ${tx.type === 'income' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>{tx.type}</span>
                   }
                 </td>
-                <td className="px-4 py-2.5 text-gray-300">{categoryMap[tx.category] ?? tx.category}</td>
-                <td className="px-4 py-2.5 max-w-xs truncate text-gray-300" title={tx.description}>{tx.description}</td>
-                <td className="px-4 py-2.5 text-gray-400 max-w-xs truncate" title={tx.counterparty}>{tx.counterparty}</td>
-                <td className="px-4 py-2.5 text-gray-400">{tx.person}</td>
-                <td className="px-4 py-2.5">
+                <td className="py-1.5 overflow-hidden">
+                  <div className="flex items-center gap-1 px-3">
+                    <select
+                      value={tx.category}
+                      onChange={(e) => updateTransaction(tx.id, { category: e.target.value, categoryPinned: true })}
+                      className="bg-transparent text-gray-300 text-sm cursor-pointer hover:text-white focus:outline-none"
+                    >
+                      {categories.map((c) => <option key={c.id} value={c.id} className="bg-gray-800">{c.name}</option>)}
+                      {!categories.find((c) => c.id === tx.category) && (
+                        <option value={tx.category} className="bg-gray-800">{tx.category}</option>
+                      )}
+                    </select>
+                    {tx.categoryPinned && (
+                      <button
+                        onClick={() => updateTransaction(tx.id, { categoryPinned: false })}
+                        title="Pinned — click to unpin"
+                        className="text-orange-400 hover:text-gray-500 text-xs leading-none"
+                      >
+                        📌
+                      </button>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5 text-gray-300 overflow-hidden">{tx.description}</td>
+                <td className="px-4 py-2.5 text-gray-400 overflow-hidden">{tx.person}</td>
+                <td className="px-4 py-2.5 overflow-hidden">
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">{tx.bank}</span>
                 </td>
                 <td className="px-4 py-2.5">

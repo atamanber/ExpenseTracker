@@ -11,7 +11,14 @@ function randomId() {
 const COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316','#ec4899','#6b7280']
 
 export default function RulesPage() {
-  const { categories, rules, persons, addCategory, updateCategory, deleteCategory, addRule, updateRule, deleteRule, addPerson, removePerson } = useStore()
+  const { categories, rules, persons, addCategory, updateCategory, deleteCategory, addRule, updateRule, deleteRule, addPerson, removePerson, reapplyRules } = useStore()
+  const [reapplied, setReapplied] = useState(false)
+
+  const handleReapply = () => {
+    reapplyRules()
+    setReapplied(true)
+    setTimeout(() => setReapplied(false), 2000)
+  }
 
   // Category editing
   const [editingCat, setEditingCat] = useState<Category | null>(null)
@@ -111,12 +118,20 @@ export default function RulesPage() {
       <section className="space-y-3">
         <div className="flex items-center justify-between border-b border-gray-800 pb-2">
           <h2 className="text-lg font-semibold">Categories</h2>
-          <button
-            onClick={() => { setEditingCat(null); setNewCatName(''); setNewCatColor(COLORS[0]); setNewCatKeywords('') }}
-            className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded text-sm"
-          >
-            + New Category
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleReapply}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+            >
+              {reapplied ? 'Done!' : 'Re-apply to All Transactions'}
+            </button>
+            <button
+              onClick={() => { setEditingCat(null); setNewCatName(''); setNewCatColor(COLORS[0]); setNewCatKeywords('') }}
+              className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded text-sm"
+            >
+              + New Category
+            </button>
+          </div>
         </div>
 
         {/* Category form */}
