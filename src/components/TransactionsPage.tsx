@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { useStore } from '../store/useStore'
 import NewRuleForm from './NewRuleForm'
+import { formatAmount } from '../utils/format'
 
 type SortKey = 'date' | 'amount' | 'category' | 'person' | 'bank'
 
@@ -20,17 +21,31 @@ const INIT_WIDTHS: Record<ColKey, number> = {
 }
 
 export default function TransactionsPage() {
-  const { transactions, categories, updateTransaction, removeTransaction, clearAllTransactions } = useStore()
+  const { transactions, categories, uploadSessions, updateTransaction, removeTransaction, clearAllTransactions } = useStore()
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filterPerson, setFilterPerson] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterMonth, setFilterMonth] = useState('')
+  const [filterSession, setFilterSession] = useState('')
+  const [filterAmountOp, setFilterAmountOp] = useState<'gte' | 'lte' | ''>('')
+  const [filterAmountVal, setFilterAmountVal] = useState('')
   const [search, setSearch] = useState('')
+  const [editingDateId, setEditingDateId] = useState<string | null>(null)
   const [showIgnored, setShowIgnored] = useState(true)
   const [showNewRule, setShowNewRule] = useState(false)
   const [colWidths, setColWidths] = useState<Record<ColKey, number>>(INIT_WIDTHS)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = (id: string) => {
+    if (window.getSelection()?.toString()) return
+    setExpandedRows((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   const resizing = useRef<{ col: ColKey; nextCol: ColKey; startX: number; startWidth: number; nextStartWidth: number } | null>(null)
 
@@ -79,10 +94,18 @@ export default function TransactionsPage() {
   const filtered = useMemo(() => {
     let txs = [...transactions]
     if (!showIgnored) txs = txs.filter((t) => !t.ignored)
+    if (filterSession) txs = txs.filter((t) => t.sessionId === filterSession)
     if (filterPerson) txs = txs.filter((t) => t.person === filterPerson)
     if (filterCategory) txs = txs.filter((t) => t.category === filterCategory)
     if (filterType) txs = txs.filter((t) => t.type === filterType)
     if (filterMonth) txs = txs.filter((t) => t.date.startsWith(filterMonth))
+    if (filterAmountOp && filterAmountVal !== '') {
+      const val = parseFloat(filterAmountVal)
+      if (!isNaN(val)) {
+        if (filterAmountOp === 'gte') txs = txs.filter((t) => t.amount >= val)
+        else txs = txs.filter((t) => t.amount <= val)
+      }
+    }
     if (search) {
       const s = search.toLowerCase()
       txs = txs.filter(
@@ -100,7 +123,7 @@ export default function TransactionsPage() {
       return 0
     })
     return txs
-  }, [transactions, sortKey, sortDir, filterPerson, filterCategory, filterType, filterMonth, search, showIgnored])
+  }, [transactions, sortKey, sortDir, filterSession, filterPerson, filterCategory, filterType, filterMonth, filterAmountOp, filterAmountVal, search, showIgnored])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -135,7 +158,7 @@ export default function TransactionsPage() {
   const handleCopyTable = () => {
     const header = 'Date\tAmount\tType\tCategory\tDescription\tPerson\tBank'
     const rows = filtered.map((t) =>
-      [t.date, t.amount.toFixed(2), t.type, categoryMap[t.category] ?? t.category, t.description, t.person, t.bank].join('\t')
+      [t.date, formatAmount(t.amount), t.type, categoryMap[t.category] ?? t.category, t.description, t.person, t.bank].join('\t')
     )
     navigator.clipboard.writeText([header, ...rows].join('\n'))
   }
@@ -176,6 +199,13 @@ export default function TransactionsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm flex-1 min-w-40"
         />
+        <select value={filterSession} onChange={(e) => setFilterSession(e.target.value)}
+          className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm max-w-48">
+          <option value="">All sessions</option>
+          {[...uploadSessions].reverse().map((s) => (
+            <option key={s.id} value={s.id}>{s.filename} ({s.person})</option>
+          ))}
+        </select>
         <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}
           className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
           <option value="">All months</option>
@@ -197,6 +227,26 @@ export default function TransactionsPage() {
           <option value="income">Income</option>
           <option value="expense">Expense</option>
         </select>
+        <div className="flex gap-1">
+          <select
+            value={filterAmountOp}
+            onChange={(e) => setFilterAmountOp(e.target.value as 'gte' | 'lte' | '')}
+            className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm"
+          >
+            <option value="">Amount</option>
+            <option value="gte">≥</option>
+            <option value="lte">≤</option>
+          </select>
+          {filterAmountOp && (
+            <input
+              type="number"
+              placeholder="0.00"
+              value={filterAmountVal}
+              onChange={(e) => setFilterAmountVal(e.target.value)}
+              className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-28"
+            />
+          )}
+        </div>
         <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
           <input type="checkbox" checked={showIgnored} onChange={(e) => setShowIgnored(e.target.checked)} className="rounded" />
           Show ignored
@@ -229,9 +279,22 @@ export default function TransactionsPage() {
             )}
             {filtered.map((tx) => (
               <tr key={tx.id} className={`transition-colors ${tx.ignored ? 'opacity-40 hover:opacity-60' : 'hover:bg-gray-800/50'}`}>
-                <td className="px-4 py-2.5 font-mono text-gray-300 overflow-hidden">{tx.date}</td>
+                <td className="px-4 py-2.5 font-mono text-gray-300 overflow-hidden">
+                  {editingDateId === tx.id ? (
+                    <input
+                      type="date"
+                      defaultValue={tx.date}
+                      autoFocus
+                      onBlur={(e) => { updateTransaction(tx.id, { date: e.target.value }); setEditingDateId(null) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingDateId(null) }}
+                      className="bg-gray-700 border border-gray-600 rounded px-2 py-0.5 text-sm w-full"
+                    />
+                  ) : (
+                    <span onClick={() => setEditingDateId(tx.id)} className="cursor-pointer hover:text-white">{tx.date}</span>
+                  )}
+                </td>
                 <td className={`px-4 py-2.5 font-mono font-semibold overflow-hidden ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {tx.amount >= 0 ? '+' : ''}{tx.amount.toFixed(2)}
+                  {tx.amount >= 0 ? '+' : ''}{formatAmount(tx.amount)}
                 </td>
                 <td className="px-4 py-2.5 overflow-hidden">
                   {tx.ignored
@@ -262,7 +325,14 @@ export default function TransactionsPage() {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-2.5 text-gray-300 overflow-hidden">{tx.description}</td>
+                <td
+                  className="px-4 py-2.5 text-gray-300 cursor-pointer hover:text-white overflow-hidden"
+                  onClick={() => toggleExpanded(tx.id)}
+                >
+                  <span className={expandedRows.has(tx.id) ? 'whitespace-pre-wrap break-words' : 'block truncate'}>
+                    {tx.description}
+                  </span>
+                </td>
                 <td className="px-4 py-2.5 text-gray-400 overflow-hidden">{tx.person}</td>
                 <td className="px-4 py-2.5 overflow-hidden">
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">{tx.bank}</span>
