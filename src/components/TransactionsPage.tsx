@@ -5,23 +5,24 @@ import { formatAmount } from '../utils/format'
 
 type SortKey = 'date' | 'amount' | 'category' | 'person' | 'bank'
 
-type ColKey = 'date' | 'amount' | 'type' | 'category' | 'description' | 'person' | 'bank' | 'actions'
+type ColKey = 'date' | 'amount' | 'type' | 'category' | 'description' | 'person' | 'bank' | 'tag' | 'actions'
 
-const COL_KEYS: ColKey[] = ['date', 'amount', 'type', 'category', 'description', 'person', 'bank', 'actions']
+const COL_KEYS: ColKey[] = ['date', 'amount', 'type', 'category', 'description', 'person', 'bank', 'tag', 'actions']
 
 const INIT_WIDTHS: Record<ColKey, number> = {
   date: 110,
   amount: 100,
   type: 90,
   category: 130,
-  description: 320,
+  description: 300,
   person: 100,
   bank: 80,
+  tag: 110,
   actions: 40,
 }
 
 export default function TransactionsPage() {
-  const { transactions, categories, uploadSessions, updateTransaction, removeTransaction, clearAllTransactions } = useStore()
+  const { transactions, categories, tags, uploadSessions, updateTransaction, removeTransaction, clearAllTransactions } = useStore()
   const [sortKey, setSortKey] = useState<SortKey>('date')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filterPerson, setFilterPerson] = useState('')
@@ -270,12 +271,13 @@ export default function TransactionsPage() {
               {colHeader('description', null, 'Description')}
               {colHeader('person', 'person', 'Person')}
               {colHeader('bank', 'bank', 'Bank')}
+              {colHeader('tag', null, 'Tag')}
               <th className="relative py-3" style={{ width: colWidths.actions }} />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
             {filtered.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500">No transactions found</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-500">No transactions found</td></tr>
             )}
             {filtered.map((tx) => (
               <tr key={tx.id} className={`transition-colors ${tx.ignored ? 'opacity-40 hover:opacity-60' : 'hover:bg-gray-800/50'}`}>
@@ -336,6 +338,18 @@ export default function TransactionsPage() {
                 <td className="px-4 py-2.5 text-gray-400 overflow-hidden">{tx.person}</td>
                 <td className="px-4 py-2.5 overflow-hidden">
                   <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">{tx.bank}</span>
+                </td>
+                <td className="px-2 py-1.5 overflow-hidden">
+                  <select
+                    value={tx.tagId ?? ''}
+                    onChange={(e) => updateTransaction(tx.id, { tagId: e.target.value || undefined })}
+                    className={`text-xs rounded px-1.5 py-0.5 w-full cursor-pointer focus:outline-none ${
+                      tx.tagId ? 'bg-violet-900/60 text-violet-300 border border-violet-700' : 'bg-transparent text-gray-600 border border-transparent hover:border-gray-600'
+                    }`}
+                  >
+                    <option value="">—</option>
+                    {tags.map((t) => <option key={t.id} value={t.id} className="bg-gray-800 text-gray-200">{t.name}</option>)}
+                  </select>
                 </td>
                 <td className="px-4 py-2.5">
                   <button onClick={() => removeTransaction(tx.id)} className="text-gray-600 hover:text-red-400 text-xs">×</button>

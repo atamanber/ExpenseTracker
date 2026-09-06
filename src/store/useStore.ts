@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Transaction, Category, Rule, AppData, UploadSession } from '../types'
+import type { Transaction, Category, Rule, AppData, UploadSession, Tag } from '../types'
 import { classifyTransaction } from '../utils/ruleEngine'
+import baseConfig from '../data/baseConfig.json'
 
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'market',    name: 'Market',    keywords: ['albert heijn', 'jumbo', 'lidl', 'aldi', 'plus supermarkt', 'hoogvliet', 'dirk', 'ozde foodcenter'], color: '#22c55e' },
@@ -41,6 +42,7 @@ interface StoreState extends AppData {
   clearAllTransactions: () => void
   addUploadSession: (session: UploadSession) => void
   deleteSession: (sessionId: string) => void
+  updateSessionPerson: (sessionId: string, person: string) => void
   reapplyRules: () => void
   setCategories: (cats: Category[]) => void
   addCategory: (cat: Category) => void
@@ -52,6 +54,9 @@ interface StoreState extends AppData {
   deleteRule: (id: string) => void
   addPerson: (name: string) => void
   removePerson: (name: string) => void
+  addTag: (tag: Tag) => void
+  deleteTag: (id: string) => void
+  applyTag: (id: string) => void
   importData: (data: AppData) => void
   exportData: () => AppData
 }
@@ -64,6 +69,8 @@ export const useStore = create<StoreState>()(
       categories: DEFAULT_CATEGORIES,
       rules: DEFAULT_RULES,
       persons: ['Me', 'Wife'],
+      deletedBaseIds: [],
+      tags: [],
 
       addTransactions: (txs) => {
         let added = 0
@@ -94,6 +101,12 @@ export const useStore = create<StoreState>()(
           uploadSessions: s.uploadSessions.filter((sess) => sess.id !== sessionId),
         })),
 
+      updateSessionPerson: (sessionId, person) =>
+        set((s) => ({
+          uploadSessions: s.uploadSessions.map((sess) => sess.id === sessionId ? { ...sess, person } : sess),
+          transactions: s.transactions.map((t) => t.sessionId === sessionId ? { ...t, person } : t),
+        })),
+
       updateTransaction: (id, patch) =>
         set((s) => ({ transactions: s.transactions.map((t) => t.id === id ? { ...t, ...patch } : t) })),
 
@@ -111,8 +124,13 @@ export const useStore = create<StoreState>()(
       addCategory: (cat) => set((s) => ({ categories: [...s.categories, cat] })),
       updateCategory: (cat) =>
         set((s) => ({ categories: s.categories.map((c) => (c.id === cat.id ? cat : c)) })),
-      deleteCategory: (id) =>
-        set((s) => ({ categories: s.categories.filter((c) => c.id !== id) })),
+      deleteCategory: (id) => {
+        const isBase = (baseConfig.categories as Category[]).some((c) => c.id === id)
+        set((s) => ({
+          categories: s.categories.filter((c) => c.id !== id),
+          deletedBaseIds: isBase ? [...s.deletedBaseIds, id] : s.deletedBaseIds,
+        }))
+      },
 
       setRules: (rules) => set({ rules }),
       addRule: (rule) => {
@@ -123,24 +141,63 @@ export const useStore = create<StoreState>()(
         set((s) => ({ rules: s.rules.map((r) => (r.id === rule.id ? rule : r)) }))
         get().reapplyRules()
       },
-      deleteRule: (id) =>
-        set((s) => ({ rules: s.rules.filter((r) => r.id !== id) })),
+      deleteRule: (id) => {
+        const isBase = (baseConfig.rules as Rule[]).some((r) => r.id === id)
+        set((s) => ({
+          rules: s.rules.filter((r) => r.id !== id),
+          deletedBaseIds: isBase ? [...s.deletedBaseIds, id] : s.deletedBaseIds,
+        }))
+      },
 
       addPerson: (name) =>
         set((s) => ({ persons: s.persons.includes(name) ? s.persons : [...s.persons, name] })),
-      removePerson: (name) =>
-        set((s) => ({ persons: s.persons.filter((p) => p !== name) })),
+      removePerson: (name) => {
+        const isBase = (baseConfig.persons as string[]).includes(name)
+        set((s) => ({
+          persons: s.persons.filter((p) => p !== name),
+          deletedBaseIds: isBase ? [...s.deletedBaseIds, name] : s.deletedBaseIds,
+        }))
+      },
 
-      importData: (data) => set({ ...data, uploadSessions: data.uploadSessions ?? [] }),
+      addTag: (tag) => {
+        set((s) => ({ tags: [...s.tags, tag] }))
+        get().applyTag(tag.id)
+      },
+
+      deleteTag: (id) =>
+        set((s) => ({
+          tags: s.tags.filter((t) => t.id !== id),
+          transactions: s.transactions.map((tx) => tx.tagId === id ? { ...tx, tagId: undefined } : tx),
+        })),
+
+      applyTag: (id) => {
+        const { tags, transactions } = get()
+        const tag = tags.find((t) => t.id === id)
+        if (!tag) return
+        set({
+          transactions: transactions.map((tx) => {
+            const inRange = tx.date >= tag.dateFrom && tx.date <= tag.dateTo
+            if (!inRange) return tx
+            // Auto-tag only 'other' category expenses; manual tags on other categories are preserved
+            if (tx.category === 'other' && tx.type === 'expense') {
+              return { ...tx, tagId: id }
+            }
+            return tx
+          }),
+        })
+      },
+
+      importData: (data) => set({ ...data, uploadSessions: data.uploadSessions ?? [], deletedBaseIds: data.deletedBaseIds ?? [], tags: data.tags ?? [] }),
       exportData: () => {
-        const { transactions, uploadSessions, categories, rules, persons } = get()
-        return { transactions, uploadSessions, categories, rules, persons }
+        const { transactions, uploadSessions, categories, rules, persons, deletedBaseIds, tags } = get()
+        return { transactions, uploadSessions, categories, rules, persons, deletedBaseIds, tags }
       },
     }),
     {
       name: 'expense-tracker-data',
       onRehydrateStorage: () => (state) => {
         if (!state) return
+        if (!state.tags) state.tags = []
         const BILLS_KEYWORDS = ['youfone nederland', 'vitens nv', 'eneco services', 'basic fit nederland', 'greenchoice', 'centraal beheer', 'simpel', 'vereniging van eigenaars hofstad iv', 'allianz direct']
         // Remove retired categories
         state.categories = state.categories.filter((c) => c.id !== 'dining' && c.id !== 'subscriptions')
@@ -153,6 +210,24 @@ export const useStore = create<StoreState>()(
           state.categories = [...state.categories, { id: 'bills', name: 'Bills', keywords: BILLS_KEYWORDS, color: '#f97316' }]
         } else {
           bills.keywords = BILLS_KEYWORDS
+        }
+
+        // Merge base config — add any base item not already present and not explicitly deleted
+        const deleted = new Set(state.deletedBaseIds ?? [])
+        for (const bp of baseConfig.persons as string[]) {
+          if (!deleted.has(bp) && !state.persons.includes(bp)) {
+            state.persons = [...state.persons, bp]
+          }
+        }
+        for (const bc of baseConfig.categories as Category[]) {
+          if (!deleted.has(bc.id) && !state.categories.find((c) => c.id === bc.id)) {
+            state.categories = [...state.categories, bc]
+          }
+        }
+        for (const br of baseConfig.rules as Rule[]) {
+          if (!deleted.has(br.id) && !state.rules.find((r) => r.id === br.id)) {
+            state.rules = [...state.rules, br]
+          }
         }
       },
     }

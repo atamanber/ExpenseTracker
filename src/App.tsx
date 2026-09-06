@@ -4,6 +4,7 @@ import TransactionsPage from './components/TransactionsPage'
 import SummaryPage from './components/SummaryPage'
 import RulesPage from './components/RulesPage'
 import ManualEntryPage from './components/ManualEntryPage'
+import TagsPage from './components/TagsPage'
 
 const navItems = [
   { to: '/',             label: 'Upload' },
@@ -11,6 +12,7 @@ const navItems = [
   { to: '/summary',      label: 'Summary' },
   { to: '/rules',        label: 'Rules & Categories' },
   { to: '/manual',       label: 'Manual Entry' },
+  { to: '/tags',         label: 'Tags' },
 ]
 
 export default function App() {
@@ -40,6 +42,7 @@ export default function App() {
           <Route path="/summary"      element={<SummaryPage />} />
           <Route path="/rules"        element={<RulesPage />} />
           <Route path="/manual"       element={<ManualEntryPage />} />
+          <Route path="/tags"         element={<TagsPage />} />
         </Routes>
       </main>
     </div>

@@ -13,6 +13,14 @@ export interface Transaction {
   sessionId: string
   ignored: boolean      // if true, excluded from Summary
   categoryPinned?: boolean  // if true, category was manually set and survives re-apply
+  tagId?: string        // optional tag (e.g. vacation, project)
+}
+
+export interface Tag {
+  id: string
+  name: string
+  dateFrom: string      // ISO date
+  dateTo: string        // ISO date
 }
 
 export interface UploadSession {
@@ -34,7 +42,7 @@ export interface Category {
 }
 
 export interface RuleCondition {
-  field: 'description' | 'counterparty' | 'amount'
+  field: 'description' | 'counterparty' | 'amount' | 'bank'
   operator: 'contains' | 'equals' | 'gt' | 'lt' | 'gte' | 'lte'
   value: string
 }
@@ -57,4 +65,6 @@ export interface AppData {
   categories: Category[]
   rules: Rule[]
   persons: string[]
+  deletedBaseIds: string[]
+  tags: Tag[]
 }
