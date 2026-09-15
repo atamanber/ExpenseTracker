@@ -34,7 +34,7 @@ export default function TransactionsPage() {
   const [filterAmountVal, setFilterAmountVal] = useState('')
   const [search, setSearch] = useState('')
   const [editingDateId, setEditingDateId] = useState<string | null>(null)
-  const [showIgnored, setShowIgnored] = useState(true)
+  const [ignoredFilter, setIgnoredFilter] = useState<'all' | 'active' | 'ignored'>('all')
   const [showNewRule, setShowNewRule] = useState(false)
   const [colWidths, setColWidths] = useState<Record<ColKey, number>>(INIT_WIDTHS)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
@@ -94,7 +94,9 @@ export default function TransactionsPage() {
 
   const filtered = useMemo(() => {
     let txs = [...transactions]
-    if (!showIgnored) txs = txs.filter((t) => !t.ignored)
+    if (ignoredFilter === 'active') txs = txs.filter((t) => !t.ignored)
+    else if (ignoredFilter === 'ignored') txs = txs.filter((t) => t.ignored)
+
     if (filterSession) txs = txs.filter((t) => t.sessionId === filterSession)
     if (filterPerson) txs = txs.filter((t) => t.person === filterPerson)
     if (filterCategory) txs = txs.filter((t) => t.category === filterCategory)
@@ -124,7 +126,7 @@ export default function TransactionsPage() {
       return 0
     })
     return txs
-  }, [transactions, sortKey, sortDir, filterSession, filterPerson, filterCategory, filterType, filterMonth, filterAmountOp, filterAmountVal, search, showIgnored])
+  }, [transactions, sortKey, sortDir, filterSession, filterPerson, filterCategory, filterType, filterMonth, filterAmountOp, filterAmountVal, search, ignoredFilter])
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
@@ -248,10 +250,12 @@ export default function TransactionsPage() {
             />
           )}
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
-          <input type="checkbox" checked={showIgnored} onChange={(e) => setShowIgnored(e.target.checked)} className="rounded" />
-          Show ignored
-        </label>
+        <select value={ignoredFilter} onChange={(e) => setIgnoredFilter(e.target.value as typeof ignoredFilter)}
+          className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
+          <option value="all">All</option>
+          <option value="active">Active only</option>
+          <option value="ignored">Ignored only</option>
+        </select>
       </div>
 
       {/* Table */}
