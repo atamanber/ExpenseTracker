@@ -31,3 +31,19 @@ The file format is: [CSV / XLS / XLSX — pick one]
 - The more columns you include in the sample, the better the mapping will be
 - If your bank's export uses a non-English decimal separator (e.g. comma instead of dot), mention it
 - If the date format is unusual (e.g. `31-12-2024` instead of `2024-12-31`), mention that too
+
+## Important — files you must NOT modify
+
+When submitting a pull request, your changes should be limited to:
+
+| File | What to do |
+|---|---|
+| `src/parsers/[bankname]Parser.ts` | ✅ Create this new file |
+| `src/utils/hash.ts` | ✅ Add a new hash function for your bank |
+| `src/components/UploadPage.tsx` | ✅ Register your bank in the dropdown only |
+
+**Do not touch these files** — they contain the repo owner's personal configuration and modifying them will cause your PR to be rejected:
+
+- `src/data/baseConfig.json` — contains the owner's categories, rules, and persons
+- `src/store/useStore.ts` — contains default categories and rule engine logic
+- `src/utils/ruleEngine.ts` — contains the classification logic
