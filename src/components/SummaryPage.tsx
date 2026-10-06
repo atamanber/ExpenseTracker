@@ -18,6 +18,9 @@ export default function SummaryPage() {
   const [excludedAnalysisCatsArr, setExcludedAnalysisCatsArr] = useLocalStorage<string[]>('summary-excluded-analysis-cats', [])
   const excludedAnalysisCats = new Set(excludedAnalysisCatsArr)
 
+  const [excludedMonthsArr, setExcludedMonthsArr] = useLocalStorage<string[]>('summary-excluded-months', [])
+  const excludedMonths = new Set(excludedMonthsArr)
+
   const toggleAnalysisCat = (catId: string) => {
     setExcludedAnalysisCatsArr((prev) =>
       prev.includes(catId) ? prev.filter((c) => c !== catId) : [...prev, catId]
@@ -30,6 +33,12 @@ export default function SummaryPage() {
     )
   }
 
+  const toggleMonth = (month: string) => {
+    setExcludedMonthsArr((prev) =>
+      prev.includes(month) ? prev.filter((m) => m !== month) : [...prev, month]
+    )
+  }
+
   const months = [...new Set(transactions.map((t) => t.date.slice(0, 7)))].sort().reverse()
   const persons = [...new Set(transactions.map((t) => t.person))]
   const categoryMap = Object.fromEntries(categories.map((c) => [c.id, c]))
@@ -37,9 +46,10 @@ export default function SummaryPage() {
   const filtered = useMemo(() => {
     let txs = transactions.filter((t) => !t.ignored)
     if (filterMonth) txs = txs.filter((t) => t.date.startsWith(filterMonth))
+    else if (excludedMonths.size > 0) txs = txs.filter((t) => !excludedMonths.has(t.date.slice(0, 7)))
     if (filterPerson) txs = txs.filter((t) => t.person === filterPerson)
     return txs
-  }, [transactions, filterMonth, filterPerson])
+  }, [transactions, filterMonth, filterPerson, excludedMonthsArr])
 
   const grouped = useMemo(() => {
     const map = new Map<string, { total: number; count: number }>()
@@ -63,7 +73,7 @@ export default function SummaryPage() {
   // Monthly average — exclude toggled categories, only when not filtered to a single month
   const monthlyAvg = useMemo(() => {
     if (filterMonth) return null
-    const baseTxs = transactions.filter((t) => !t.ignored && !excludedCats.has(t.category))
+    const baseTxs = transactions.filter((t) => !t.ignored && !excludedCats.has(t.category) && !excludedMonths.has(t.date.slice(0, 7)))
     const filtered2 = filterPerson ? baseTxs.filter((t) => t.person === filterPerson) : baseTxs
     const monthSet = [...new Set(filtered2.map((t) => t.date.slice(0, 7)))].sort()
     if (monthSet.length === 0) return null
@@ -71,11 +81,11 @@ export default function SummaryPage() {
     const income = filtered2.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0)
     const expense = filtered2.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
     return { income: income / n, expense: expense / n, net: (income + expense) / n, months: n }
-  }, [transactions, filterMonth, filterPerson, excludedCats])
+  }, [transactions, filterMonth, filterPerson, excludedCats, excludedMonthsArr])
 
 
   const chartData = useMemo(() => {
-    const baseTxs = transactions.filter((t) => !t.ignored && !excludedCats.has(t.category))
+    const baseTxs = transactions.filter((t) => !t.ignored && !excludedCats.has(t.category) && !excludedMonths.has(t.date.slice(0, 7)))
     const filtered2 = filterPerson ? baseTxs.filter((t) => t.person === filterPerson) : baseTxs
     const monthSet = [...new Set(filtered2.map((t) => t.date.slice(0, 7)))].sort()
     return monthSet.map((month) => {
@@ -86,11 +96,11 @@ export default function SummaryPage() {
       const other = allTxs.filter((t) => t.category === 'other').reduce((s, t) => s + Math.abs(t.amount), 0)
       return { month, income, expense, other }
     })
-  }, [transactions, filterPerson, excludedCats])
+  }, [transactions, filterPerson, excludedCats, excludedMonthsArr])
 
   // Per-category, per-month analysis (always uses all months, ignores filterMonth)
   const categoryAnalysis = useMemo(() => {
-    const baseTxs = transactions.filter((t) => !t.ignored)
+    const baseTxs = transactions.filter((t) => !t.ignored && !excludedMonths.has(t.date.slice(0, 7)))
     const txs = filterPerson ? baseTxs.filter((t) => t.person === filterPerson) : baseTxs
     const allMonths = [...new Set(txs.map((t) => t.date.slice(0, 7)))].sort()
     const allCatIds = [...new Set(txs.map((t) => t.category))]
@@ -123,7 +133,7 @@ export default function SummaryPage() {
     }
 
     return { allMonths, allCatIds, data, avg, deviation }
-  }, [transactions, filterPerson])
+  }, [transactions, filterPerson, excludedMonthsArr])
 
   const anomalies = useMemo(() => {
     const { allMonths, allCatIds, data, avg, deviation } = categoryAnalysis
@@ -157,17 +167,50 @@ export default function SummaryPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
-          <option value="">All months</option>
-          {months.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <select value={filterPerson} onChange={(e) => setFilterPerson(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
-          <option value="">All persons</option>
-          {persons.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
+      <div className="space-y-3">
+        <div className="flex gap-3 flex-wrap">
+          <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
+            <option value="">All months</option>
+            {months.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select value={filterPerson} onChange={(e) => setFilterPerson(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm">
+            <option value="">All persons</option>
+            {persons.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+
+        {/* Month exclusion pills — only shown when not filtered to a single month */}
+        {!filterMonth && months.length > 1 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs text-gray-500 flex-shrink-0">Exclude:</span>
+            {months.map((m) => {
+              const excluded = excludedMonths.has(m)
+              return (
+                <button
+                  key={m}
+                  onClick={() => toggleMonth(m)}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    excluded
+                      ? 'border-red-700 bg-red-900/40 text-red-400'
+                      : 'border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-500'
+                  }`}
+                >
+                  {m}
+                </button>
+              )
+            })}
+            {excludedMonths.size > 0 && (
+              <button
+                onClick={() => setExcludedMonthsArr([])}
+                className="text-xs text-gray-600 hover:text-gray-400 ml-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Totals */}
