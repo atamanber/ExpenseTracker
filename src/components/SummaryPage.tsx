@@ -332,7 +332,7 @@ export default function SummaryPage() {
                     <div style={{ background: '#1f2937', border: '1px solid #374151', borderRadius: 8, padding: '10px 14px' }}>
                       <div style={{ color: '#e5e7eb', marginBottom: 6, fontWeight: 600 }}>{label}</div>
                       <div style={{ color: '#4ade80', fontSize: 13 }}>Income: €{formatAmount(income)}</div>
-                      <div style={{ color: '#f87171', fontSize: 13 }}>Expenses: €{formatAmount(expense)}</div>
+                      <div style={{ color: '#f87171', fontSize: 13 }}>All Expenses (incl. Other): €{formatAmount(expense)}</div>
                       <div style={{ color: '#94a3b8', fontSize: 13 }}>Other: €{formatAmount(other)}</div>
                       <div style={{ color: net >= 0 ? '#60a5fa' : '#fb923c', fontSize: 13, marginTop: 4, fontWeight: 600, borderTop: '1px solid #374151', paddingTop: 4 }}>
                         Net: {net >= 0 ? '+' : '-'}€{formatAmount(Math.abs(net))}
@@ -341,7 +341,7 @@ export default function SummaryPage() {
                   )
                 }}
               />
-              <Legend formatter={(v) => v === 'income' ? 'Income' : v === 'expense' ? 'Expenses' : 'Other'} wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
+              <Legend formatter={(v) => v === 'income' ? 'Income' : v === 'expense' ? 'All Expenses (incl. Other)' : 'Other'} wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
               <Bar dataKey="income" fill="#4ade80" radius={[3, 3, 0, 0]} />
               <Bar dataKey="expense" fill="#f87171" radius={[3, 3, 0, 0]} />
               {showOtherBar && <Bar dataKey="other" fill="#94a3b8" radius={[3, 3, 0, 0]} />}
