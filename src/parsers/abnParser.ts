@@ -25,16 +25,17 @@ function extractCounterparty(description: string): string {
   return ''
 }
 
-export async function parseABN(file: File, person: string, sessionId: string): Promise<Transaction[]> {
+export async function parseABN(file: File, person: string, sessionId: string): Promise<{ transactions: Transaction[]; skippedRows: number }> {
   const buffer = await file.arrayBuffer()
   const wb = XLSX.read(buffer, { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1 })
 
   const transactions: Transaction[] = []
+  let skippedRows = 0
 
   for (const row of rows as unknown[][]) {
-    if (!row || row.length < 8) continue
+    if (!row || row.length < 8) { skippedRows++; continue }
 
     const accountRaw = row[0]
     const dateRaw = row[2]
@@ -43,7 +44,7 @@ export async function parseABN(file: File, person: string, sessionId: string): P
     const amountRaw = row[6]
     const descRaw = String(row[7] ?? '')
 
-    if (typeof dateRaw !== 'number' || typeof amountRaw !== 'number') continue
+    if (typeof dateRaw !== 'number' || typeof amountRaw !== 'number') { skippedRows++; continue }
 
     const description = cleanDescription(descRaw)
     const counterparty = extractCounterparty(description)
@@ -72,5 +73,5 @@ export async function parseABN(file: File, person: string, sessionId: string): P
     })
   }
 
-  return transactions
+  return { transactions, skippedRows }
 }

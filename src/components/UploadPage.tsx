@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { formatAmount } from '../utils/format'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore'
 import { parseABN } from '../parsers/abnParser'
@@ -16,11 +17,13 @@ export default function UploadPage() {
   const [fileEntries, setFileEntries] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [importResult, setImportResult] = useState<{ added: number; skipped: number } | null>(null)
+  const [importResult, setImportResult] = useState<{ added: number; skipped: number; parseWarnings: number } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
-  const { addTransactions, addUploadSession, deleteSession, uploadSessions, categories, rules, persons, importData, exportData } = useStore()
+  const { addTransactions, addUploadSession, deleteSession, updateSessionPerson, uploadSessions, transactions, categories, rules, persons, importData, exportData, removeTransaction } = useStore()
+  const [manualExpanded, setManualExpanded] = useState(false)
+  const [editingPersonSession, setEditingPersonSession] = useState<string | null>(null)
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return
@@ -70,13 +73,15 @@ export default function UploadPage() {
     try {
       let totalAdded = 0
       let totalSkipped = 0
+      let totalParseWarnings = 0
       for (const entry of fileEntries) {
         const sessionId = crypto.randomUUID()
-        const parsed: Transaction[] =
+        const { transactions: parsed, skippedRows } =
           entry.bank === 'abn'
             ? await parseABN(entry.file, entry.person, sessionId)
             : await parseBunq(entry.file, entry.person, sessionId)
 
+        totalParseWarnings += skippedRows
         const classified = parsed.map((tx) => classifyTransaction(tx, categories, rules))
 
         if (classified.length > 0) {
@@ -106,7 +111,7 @@ export default function UploadPage() {
         }
       }
 
-      setImportResult({ added: totalAdded, skipped: totalSkipped })
+      setImportResult({ added: totalAdded, skipped: totalSkipped, parseWarnings: totalParseWarnings })
       setFileEntries([])
       setTimeout(() => navigate('/transactions'), 1500)
     } catch (e) {
@@ -222,12 +227,19 @@ export default function UploadPage() {
       )}
 
       {importResult !== null && (
-        <div className="bg-green-900/40 border border-green-700 rounded-lg p-4 text-green-300">
-          Imported {importResult.added} transactions.
-          {importResult.skipped > 0 && (
-            <span className="text-yellow-300"> {importResult.skipped} duplicate(s) skipped.</span>
+        <div className={`border rounded-lg p-4 space-y-1 ${importResult.parseWarnings > 0 ? 'bg-yellow-900/30 border-yellow-700' : 'bg-green-900/40 border-green-700'}`}>
+          <div className="text-green-300">
+            Imported {importResult.added} transactions.
+            {importResult.skipped > 0 && (
+              <span className="text-yellow-300"> {importResult.skipped} duplicate(s) skipped.</span>
+            )}
+            {' '}Redirecting...
+          </div>
+          {importResult.parseWarnings > 0 && (
+            <div className="text-yellow-300 text-sm">
+              ⚠ {importResult.parseWarnings} row{importResult.parseWarnings !== 1 ? 's' : ''} could not be parsed and were skipped. Check that your file is a valid export from the selected bank.
+            </div>
           )}
-          {' '}Redirecting...
         </div>
       )}
       {error && (
@@ -235,7 +247,7 @@ export default function UploadPage() {
       )}
 
       {/* Upload sessions history */}
-      {uploadSessions.length > 0 && (
+      {(uploadSessions.length > 0 || transactions.some((t) => t.isManual)) && (
         <div className="space-y-3">
           <h2 className="font-semibold text-gray-300 border-b border-gray-800 pb-2">Upload History</h2>
           <div className="space-y-2">
@@ -243,8 +255,27 @@ export default function UploadPage() {
               <div key={session.id} className="flex items-center gap-4 bg-gray-800 rounded-lg px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <div className="font-mono text-sm truncate">{session.filename}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    {session.dateFrom} → {session.dateTo} · {session.count} transactions · {session.person} · {session.bank.toUpperCase()}
+                  <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 flex-wrap">
+                    {session.dateFrom} → {session.dateTo} · {session.count} transactions ·
+                    {editingPersonSession === session.id ? (
+                      <select
+                        autoFocus
+                        value={session.person}
+                        onChange={(e) => { updateSessionPerson(session.id, e.target.value); setEditingPersonSession(null) }}
+                        onBlur={() => setEditingPersonSession(null)}
+                        className="bg-gray-700 border border-gray-600 rounded px-1 py-0 text-xs"
+                      >
+                        {persons.map((p) => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    ) : (
+                      <button
+                        onClick={() => setEditingPersonSession(session.id)}
+                        className="text-blue-400 hover:text-blue-300 underline underline-offset-2"
+                      >
+                        {session.person}
+                      </button>
+                    )}
+                    · {session.bank.toUpperCase()}
                   </div>
                   <div className="text-xs text-gray-600 mt-0.5">Uploaded {new Date(session.uploadedAt).toLocaleString()}</div>
                 </div>
@@ -256,6 +287,46 @@ export default function UploadPage() {
                 </button>
               </div>
             ))}
+
+            {/* Manual entries */}
+            {(() => {
+              const manualTxs = transactions.filter((t) => t.isManual)
+              if (manualTxs.length === 0) return null
+              return (
+                <div className="bg-gray-800 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => setManualExpanded((v) => !v)}
+                    className="w-full flex items-center gap-4 px-4 py-3 hover:bg-gray-700/50 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">Manual Entries</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{manualTxs.length} transaction{manualTxs.length !== 1 ? 's' : ''}</div>
+                    </div>
+                    <span className="text-gray-500 text-xs">{manualExpanded ? '▲' : '▼'}</span>
+                  </button>
+                  {manualExpanded && (
+                    <div className="border-t border-gray-700 divide-y divide-gray-700">
+                      {[...manualTxs].sort((a, b) => b.date.localeCompare(a.date)).map((tx) => (
+                        <div key={tx.id} className="flex items-center gap-3 px-4 py-2.5">
+                          <span className="text-xs text-gray-500 w-24 flex-shrink-0">{tx.date}</span>
+                          <span className="text-xs text-gray-300 flex-1 truncate">{tx.description}</span>
+                          <span className={`text-xs font-mono flex-shrink-0 ${tx.amount >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {tx.amount >= 0 ? '+' : ''}{formatAmount(tx.amount)}
+                          </span>
+                          <span className="text-xs text-gray-500 w-16 flex-shrink-0">{tx.person}</span>
+                          <button
+                            onClick={() => { if (confirm('Delete this manual entry?')) removeTransaction(tx.id) }}
+                            className="text-gray-600 hover:text-red-400 text-xs flex-shrink-0"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         </div>
       )}
