@@ -26,8 +26,9 @@ export function bunqTransactionId(
   date: string,
   amount: string,
   counterparty: string,
-  description: string
+  description: string,
+  occurrence: number
 ): string {
-  // bunq: no balance fields, but this combo is unique in practice
-  return 'bunq-' + hashString(`${account}|${date}|${amount}|${counterparty}|${description}`)
+  // occurrence handles same-day identical transactions (e.g. 3x same coffee payment)
+  return 'bunq-' + hashString(`${account}|${date}|${amount}|${counterparty}|${description}|${occurrence}`)
 }

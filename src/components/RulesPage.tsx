@@ -22,6 +22,7 @@ export default function RulesPage() {
 
   // Category editing
   const [editingCat, setEditingCat] = useState<Category | null>(null)
+  const [showCatForm, setShowCatForm] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [newCatColor, setNewCatColor] = useState(COLORS[0])
   const [newCatKeywords, setNewCatKeywords] = useState('')
@@ -39,6 +40,7 @@ export default function RulesPage() {
       addCategory({ id: randomId(), name: newCatName, color: newCatColor, keywords })
     }
     setEditingCat(null)
+    setShowCatForm(false)
     setNewCatName('')
     setNewCatColor(COLORS[0])
     setNewCatKeywords('')
@@ -46,6 +48,7 @@ export default function RulesPage() {
 
   const startEditCat = (cat: Category) => {
     setEditingCat(cat)
+    setShowCatForm(true)
     setNewCatName(cat.name)
     setNewCatColor(cat.color)
     setNewCatKeywords(cat.keywords.join(', '))
@@ -71,7 +74,12 @@ export default function RulesPage() {
 
   const updateCondition = (idx: number, patch: Partial<Rule['conditions'][number]>) => {
     if (!editingRule) return
-    const conditions = editingRule.conditions.map((c, i) => i === idx ? { ...c, ...patch } : c)
+    const conditions = editingRule.conditions.map((c, i) => {
+      if (i !== idx) return c
+      const next = { ...c, ...patch }
+      if (patch.field === 'bank') { next.operator = 'equals'; next.value = 'abn' }
+      return next
+    })
     setEditingRule({ ...editingRule, conditions })
   }
 
@@ -85,9 +93,28 @@ export default function RulesPage() {
     setEditingRule({ ...editingRule, conditions: editingRule.conditions.filter((_, i) => i !== idx) })
   }
 
+  const handleExportConfig = () => {
+    const config = { persons, categories, rules }
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'base-config.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-10">
-      <h1 className="text-2xl font-bold">Rules & Categories</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Rules & Categories</h1>
+        <button
+          onClick={handleExportConfig}
+          className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm"
+        >
+          Export Config
+        </button>
+      </div>
 
       {/* Persons */}
       <section className="space-y-3">
@@ -126,7 +153,7 @@ export default function RulesPage() {
               {reapplied ? 'Done!' : 'Re-apply to All Transactions'}
             </button>
             <button
-              onClick={() => { setEditingCat(null); setNewCatName(''); setNewCatColor(COLORS[0]); setNewCatKeywords('') }}
+              onClick={() => { setEditingCat(null); setShowCatForm(true); setNewCatName(''); setNewCatColor(COLORS[0]); setNewCatKeywords('') }}
               className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 rounded text-sm"
             >
               + New Category
@@ -135,7 +162,7 @@ export default function RulesPage() {
         </div>
 
         {/* Category form */}
-        {(editingCat !== null || newCatName !== '' || newCatKeywords !== '') && (
+        {(showCatForm || editingCat !== null) && (
           <div className="bg-gray-800 rounded-xl p-4 space-y-3">
             <h3 className="font-semibold text-sm">{editingCat ? 'Edit Category' : 'New Category'}</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -170,7 +197,7 @@ export default function RulesPage() {
             </div>
             <div className="flex gap-2">
               <button onClick={saveCategory} className="px-4 py-2 bg-blue-700 hover:bg-blue-600 rounded text-sm">Save</button>
-              <button onClick={() => { setEditingCat(null); setNewCatName(''); setNewCatKeywords('') }} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Cancel</button>
+              <button onClick={() => { setEditingCat(null); setShowCatForm(false); setNewCatName(''); setNewCatKeywords('') }} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">Cancel</button>
             </div>
           </div>
         )}
@@ -242,25 +269,40 @@ export default function RulesPage() {
                     <option value="description">Description</option>
                     <option value="counterparty">Counterparty</option>
                     <option value="amount">Amount</option>
+                    <option value="bank">Bank</option>
                   </select>
-                  <select
-                    value={cond.operator}
-                    onChange={(e) => updateCondition(idx, { operator: e.target.value as RuleCondition['operator'] })}
-                    className="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-                  >
-                    <option value="contains">contains</option>
-                    <option value="equals">equals</option>
-                    <option value="gt">greater than</option>
-                    <option value="lt">less than</option>
-                    <option value="gte">≥</option>
-                    <option value="lte">≤</option>
-                  </select>
-                  <input
-                    placeholder="Value"
-                    value={cond.value}
-                    onChange={(e) => updateCondition(idx, { value: e.target.value })}
-                    className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-                  />
+                  {cond.field === 'bank' ? (
+                    <select
+                      value={cond.value}
+                      onChange={(e) => updateCondition(idx, { value: e.target.value })}
+                      className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                    >
+                      <option value="abn">ABN AMRO</option>
+                      <option value="bunq">bunq</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                  ) : (
+                    <>
+                      <select
+                        value={cond.operator}
+                        onChange={(e) => updateCondition(idx, { operator: e.target.value as RuleCondition['operator'] })}
+                        className="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                      >
+                        <option value="contains">contains</option>
+                        <option value="equals">equals</option>
+                        <option value="gt">greater than</option>
+                        <option value="lt">less than</option>
+                        <option value="gte">≥</option>
+                        <option value="lte">≤</option>
+                      </select>
+                      <input
+                        placeholder="Value"
+                        value={cond.value}
+                        onChange={(e) => updateCondition(idx, { value: e.target.value })}
+                        className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                      />
+                    </>
+                  )}
                   {editingRule.conditions.length > 1 && (
                     <button onClick={() => removeCondition(idx)} className="text-gray-500 hover:text-red-400 px-2">×</button>
                   )}

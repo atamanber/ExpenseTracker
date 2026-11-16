@@ -40,6 +40,8 @@ function matchesCondition(tx: Transaction, condition: RuleCondition): boolean {
     return false
   }
 
+  if (field === 'bank') return operator === 'equals' && tx.bank === value
+
   const fieldValue = (field === 'description' ? tx.description : tx.counterparty).toLowerCase()
   const v = value.toLowerCase()
 

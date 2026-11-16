@@ -25,7 +25,15 @@ export default function NewRuleForm({ onSaved }: Props) {
   const [rule, setRule] = useState<Rule>(blankRule)
 
   const updateCondition = (idx: number, patch: Partial<RuleCondition>) => {
-    setRule((r) => ({ ...r, conditions: r.conditions.map((c, i) => i === idx ? { ...c, ...patch } : c) }))
+    setRule((r) => ({
+      ...r,
+      conditions: r.conditions.map((c, i) => {
+        if (i !== idx) return c
+        const next = { ...c, ...patch }
+        if (patch.field === 'bank') { next.operator = 'equals'; next.value = 'abn' }
+        return next
+      }),
+    }))
   }
 
   const addCondition = () => {
@@ -80,25 +88,40 @@ export default function NewRuleForm({ onSaved }: Props) {
               <option value="description">Description</option>
               <option value="counterparty">Counterparty</option>
               <option value="amount">Amount</option>
+              <option value="bank">Bank</option>
             </select>
-            <select
-              value={cond.operator}
-              onChange={(e) => updateCondition(idx, { operator: e.target.value as RuleCondition['operator'] })}
-              className="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-            >
-              <option value="contains">contains</option>
-              <option value="equals">equals</option>
-              <option value="gt">greater than</option>
-              <option value="lt">less than</option>
-              <option value="gte">≥</option>
-              <option value="lte">≤</option>
-            </select>
-            <input
-              placeholder="Value"
-              value={cond.value}
-              onChange={(e) => updateCondition(idx, { value: e.target.value })}
-              className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
-            />
+            {cond.field === 'bank' ? (
+              <select
+                value={cond.value}
+                onChange={(e) => updateCondition(idx, { value: e.target.value })}
+                className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+              >
+                <option value="abn">ABN AMRO</option>
+                <option value="bunq">bunq</option>
+                <option value="manual">Manual</option>
+              </select>
+            ) : (
+              <>
+                <select
+                  value={cond.operator}
+                  onChange={(e) => updateCondition(idx, { operator: e.target.value as RuleCondition['operator'] })}
+                  className="bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                >
+                  <option value="contains">contains</option>
+                  <option value="equals">equals</option>
+                  <option value="gt">greater than</option>
+                  <option value="lt">less than</option>
+                  <option value="gte">≥</option>
+                  <option value="lte">≤</option>
+                </select>
+                <input
+                  placeholder="Value"
+                  value={cond.value}
+                  onChange={(e) => updateCondition(idx, { value: e.target.value })}
+                  className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm"
+                />
+              </>
+            )}
             {rule.conditions.length > 1 && (
               <button onClick={() => removeCondition(idx)} className="text-gray-500 hover:text-red-400 px-2">×</button>
             )}
