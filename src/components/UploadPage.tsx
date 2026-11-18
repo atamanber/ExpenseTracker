@@ -5,7 +5,10 @@ import { useStore } from '../store/useStore'
 import { parseABN } from '../parsers/abnParser'
 import { parseBunq } from '../parsers/bunqParser'
 import { classifyTransaction } from '../utils/ruleEngine'
+import { saveToDrive, loadFromDrive } from '../utils/googleDrive'
 import type { Transaction, UploadSession } from '../types'
+
+const CLIENT_ID_KEY = 'gdrive-client-id'
 
 interface FileEntry {
   file: File
@@ -24,6 +27,13 @@ export default function UploadPage() {
   const { addTransactions, addUploadSession, deleteSession, updateSessionPerson, uploadSessions, transactions, categories, rules, persons, importData, exportData, removeTransaction } = useStore()
   const [manualExpanded, setManualExpanded] = useState(false)
   const [editingPersonSession, setEditingPersonSession] = useState<string | null>(null)
+
+  // Google Drive
+  const [driveClientId, setDriveClientId] = useState(() => localStorage.getItem(CLIENT_ID_KEY) ?? '')
+  const [driveSetupOpen, setDriveSetupOpen] = useState(false)
+  const [driveClientIdInput, setDriveClientIdInput] = useState('')
+  const [driveStatus, setDriveStatus] = useState<'idle' | 'busy' | 'ok' | 'error'>('idle')
+  const [driveError, setDriveError] = useState<string | null>(null)
 
   const handleFileSelect = (files: FileList | null) => {
     if (!files) return
@@ -132,6 +142,46 @@ export default function UploadPage() {
     URL.revokeObjectURL(url)
   }
 
+  const saveDriveClientId = () => {
+    const id = driveClientIdInput.trim()
+    if (!id) return
+    localStorage.setItem(CLIENT_ID_KEY, id)
+    setDriveClientId(id)
+    setDriveSetupOpen(false)
+    setDriveClientIdInput('')
+  }
+
+  const handleSaveToDrive = async () => {
+    const clientId = driveClientId || (() => { setDriveSetupOpen(true); return '' })()
+    if (!clientId) return
+    setDriveStatus('busy')
+    setDriveError(null)
+    try {
+      await saveToDrive(clientId, exportData())
+      setDriveStatus('ok')
+      setTimeout(() => setDriveStatus('idle'), 3000)
+    } catch (e) {
+      setDriveStatus('error')
+      setDriveError(String(e))
+    }
+  }
+
+  const handleLoadFromDrive = async () => {
+    if (!driveClientId) { setDriveSetupOpen(true); return }
+    if (!confirm('Load from Drive? This will replace all current data.')) return
+    setDriveStatus('busy')
+    setDriveError(null)
+    try {
+      const data = await loadFromDrive(driveClientId)
+      importData(data as Parameters<typeof importData>[0])
+      setDriveStatus('ok')
+      setTimeout(() => setDriveStatus('idle'), 3000)
+    } catch (e) {
+      setDriveStatus('error')
+      setDriveError(String(e))
+    }
+  }
+
   const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -149,9 +199,9 @@ export default function UploadPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold">Upload Bank Exports</h1>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <button onClick={handleExport} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors">
             Export Data
           </button>
@@ -159,8 +209,79 @@ export default function UploadPage() {
             Import Data
             <input type="file" accept=".json" className="hidden" onChange={handleJsonImport} />
           </label>
+          <button
+            onClick={handleSaveToDrive}
+            disabled={driveStatus === 'busy'}
+            className="px-4 py-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm transition-colors flex items-center gap-2"
+          >
+            {driveStatus === 'busy' ? 'Saving…' : driveStatus === 'ok' ? '✓ Saved to Drive' : '☁ Save to Drive'}
+          </button>
+          <button
+            onClick={handleLoadFromDrive}
+            disabled={driveStatus === 'busy'}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition-colors"
+          >
+            Load from Drive
+          </button>
+          {driveClientId && (
+            <button
+              onClick={() => { setDriveClientIdInput(driveClientId); setDriveSetupOpen(true) }}
+              className="px-2 py-2 text-gray-500 hover:text-gray-300 text-xs rounded-lg transition-colors"
+              title="Drive settings"
+            >
+              ⚙
+            </button>
+          )}
         </div>
       </div>
+
+      {driveError && (
+        <div className="bg-red-900/40 border border-red-700 rounded-lg p-3 text-red-300 text-sm">{driveError}</div>
+      )}
+
+      {/* Google Drive setup */}
+      {driveSetupOpen && (
+        <div className="bg-gray-800 border border-gray-700 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold">Connect Google Drive</h2>
+            <button onClick={() => setDriveSetupOpen(false)} className="text-gray-500 hover:text-gray-300 text-lg leading-none">×</button>
+          </div>
+          <p className="text-sm text-gray-400">
+            You need a Google OAuth Client ID. It takes ~2 minutes to set up — do it once and it's remembered.
+          </p>
+          <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside">
+            <li>Go to <span className="font-mono text-blue-400">console.cloud.google.com</span> → New project</li>
+            <li>APIs & Services → Enable APIs → search <span className="font-mono">Drive API</span> → Enable</li>
+            <li>APIs & Services → Credentials → Create Credentials → OAuth client ID</li>
+            <li>Application type: <strong>Web application</strong></li>
+            <li>Authorised JavaScript origins: <span className="font-mono">http://localhost:5173</span></li>
+            <li>Copy the Client ID and paste it below</li>
+          </ol>
+          <div className="flex gap-2">
+            <input
+              placeholder="1234567890-abc...apps.googleusercontent.com"
+              value={driveClientIdInput}
+              onChange={(e) => setDriveClientIdInput(e.target.value)}
+              className="flex-1 bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm font-mono"
+            />
+            <button
+              onClick={saveDriveClientId}
+              disabled={!driveClientIdInput.trim()}
+              className="px-4 py-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 rounded text-sm"
+            >
+              Save
+            </button>
+          </div>
+          {driveClientId && (
+            <button
+              onClick={() => { localStorage.removeItem('gdrive-client-id'); localStorage.removeItem('gdrive-file-id'); setDriveClientId(''); setDriveSetupOpen(false) }}
+              className="text-xs text-red-400 hover:text-red-300"
+            >
+              Disconnect Drive
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Drop zone */}
       <div
