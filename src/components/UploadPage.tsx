@@ -33,6 +33,7 @@ export default function UploadPage() {
   const [driveSetupOpen, setDriveSetupOpen] = useState(false)
   const [driveClientIdInput, setDriveClientIdInput] = useState('')
   const [driveStatus, setDriveStatus] = useState<'idle' | 'busy' | 'ok' | 'error'>('idle')
+  const [driveAction, setDriveAction] = useState<'save' | 'load'>('save')
   const [driveError, setDriveError] = useState<string | null>(null)
 
   const handleFileSelect = (files: FileList | null) => {
@@ -152,12 +153,12 @@ export default function UploadPage() {
   }
 
   const handleSaveToDrive = async () => {
-    const clientId = driveClientId || (() => { setDriveSetupOpen(true); return '' })()
-    if (!clientId) return
+    if (!driveClientId) { setDriveSetupOpen(true); return }
+    setDriveAction('save')
     setDriveStatus('busy')
     setDriveError(null)
     try {
-      await saveToDrive(clientId, exportData())
+      await saveToDrive(driveClientId, exportData())
       setDriveStatus('ok')
       setTimeout(() => setDriveStatus('idle'), 3000)
     } catch (e) {
@@ -169,6 +170,7 @@ export default function UploadPage() {
   const handleLoadFromDrive = async () => {
     if (!driveClientId) { setDriveSetupOpen(true); return }
     if (!confirm('Load from Drive? This will replace all current data.')) return
+    setDriveAction('load')
     setDriveStatus('busy')
     setDriveError(null)
     try {
@@ -214,14 +216,14 @@ export default function UploadPage() {
             disabled={driveStatus === 'busy'}
             className="px-4 py-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm transition-colors flex items-center gap-2"
           >
-            {driveStatus === 'busy' ? 'Saving…' : driveStatus === 'ok' ? '✓ Saved to Drive' : '☁ Save to Drive'}
+            {driveStatus === 'busy' && driveAction === 'save' ? 'Saving…' : driveStatus === 'ok' && driveAction === 'save' ? '✓ Saved to Drive' : '☁ Save to Drive'}
           </button>
           <button
             onClick={handleLoadFromDrive}
             disabled={driveStatus === 'busy'}
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition-colors"
           >
-            Load from Drive
+            {driveStatus === 'busy' && driveAction === 'load' ? 'Loading…' : driveStatus === 'ok' && driveAction === 'load' ? '✓ Loaded' : 'Load from Drive'}
           </button>
           {driveClientId && (
             <button
@@ -252,6 +254,7 @@ export default function UploadPage() {
           <ol className="text-sm text-gray-300 space-y-1 list-decimal list-inside">
             <li>Go to <span className="font-mono text-blue-400">console.cloud.google.com</span> → New project</li>
             <li>APIs & Services → Enable APIs → search <span className="font-mono">Drive API</span> → Enable</li>
+            <li>APIs & Services → OAuth consent screen → set it up (External), then under Test users add your own Google account</li>
             <li>APIs & Services → Credentials → Create Credentials → OAuth client ID</li>
             <li>Application type: <strong>Web application</strong></li>
             <li>Authorised JavaScript origins: <span className="font-mono">http://localhost:5173</span></li>
