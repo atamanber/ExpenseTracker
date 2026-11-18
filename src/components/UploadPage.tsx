@@ -217,13 +217,15 @@ export default function UploadPage() {
             className="px-4 py-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm transition-colors flex items-center gap-2"
           >
             {driveStatus === 'busy' && driveAction === 'save' ? 'Saving…' : driveStatus === 'ok' && driveAction === 'save' ? '✓ Saved to Drive' : '☁ Save to Drive'}
+            <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300">BETA</span>
           </button>
           <button
             onClick={handleLoadFromDrive}
             disabled={driveStatus === 'busy'}
-            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition-colors"
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 rounded-lg text-sm transition-colors flex items-center gap-2"
           >
             {driveStatus === 'busy' && driveAction === 'load' ? 'Loading…' : driveStatus === 'ok' && driveAction === 'load' ? '✓ Loaded' : 'Load from Drive'}
+            <span className="text-[10px] font-semibold tracking-wide px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300">BETA</span>
           </button>
           {driveClientId && (
             <button
